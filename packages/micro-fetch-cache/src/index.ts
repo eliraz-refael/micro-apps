@@ -1,7 +1,9 @@
 import { microStorage } from './cacher';
+import { IFetcher, fetcher as fetcherFunc } from './fetcher';
 
 type StorageSetter = ({ key, item }: { key: string, item: any }) => boolean;
 type StorageGetter<T> = (key:string) => T | boolean;
+type FetcherFunc<T> = ({ url, method, headers, onUnauthorized} : IFetcher) => Promise<string | T>;
 
 interface TaggerArgs {
     key: string;
@@ -21,14 +23,24 @@ interface CacherCB {
     item: any;
 }
 
-interface FetchGet {
+interface FetchGet<T> {
     url: string;
+    fetcher?: FetcherFunc<T>,
     cacher?: ({ key, item }: CacherCB) => void;
     tag?: string;
     expiration?: number;
 }
 
-export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = localStorage }: { listKey: string, storage: Storage }) {
+interface FetchPost<T, R> {
+    url: string;
+    payload: T;
+    fetcher?: FetcherFunc<R>,
+    cacher?: ({ key, item }: CacherCB) => void;
+    tag?: string;
+    expiration?: number;
+}
+
+export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = localStorage }: { listKey?: string, storage?: Storage }) {
 
     const { cacheItem, getItem } = microStorage(storage);
 
@@ -42,7 +54,7 @@ export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = loca
         }
     }
 
-    function cacher({ expiration, setItemFunc, tagger } : CacherFunc) {
+    function cacher({ expiration, setItemFunc = cacheItem, tagger } : CacherFunc) {
         return ({ key, item }: CacherCB) => {
             const data = { expireAt: expiration, item };
             setItemFunc({ key, item: data });
@@ -71,30 +83,26 @@ export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = loca
         }
     }
 
-    async function get<T>({ url, cacher, tag, expiration }: FetchGet): Promise<T> {
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (response.status >= 200 && response.status < 300) {
-                const result = await parseResponse(response);
-                if (cacher) {
-                    cacher({ key: url, item: result as any })
-                }
-            }
-            return Promise.reject(await response.json())
-
-        } catch (error) {
-            return Promise.reject(error);
+    async function get<T>({ url, cacher, fetcher = fetcherFunc }: FetchGet<T>): Promise<string | T> {
+        const result = await fetcher({ url });
+        if (cacher) {
+            cacher({ key: url, item: result as any });
         }
+        return result;
+    }
 
+    async function post<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchPost<T, R>) {
+        const result = await fetcher({ url, payload });
+        if (cacher) {
+            cacher({ key: url, item: result as any });
+        }
+        return result;
     }
 
     return {
         get,
-        cacher
+        post,
+        cacher,
+        fetcher: fetcherFunc
     }
 }
