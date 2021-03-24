@@ -1,6 +1,6 @@
 export interface IFetcher {
     url: string;
-    method?: 'get' | 'post' | 'put' | 'patch';
+    method?: 'get' | 'post' | 'put' | 'patch' | 'delete';
     headers?: any;
     payload?: any;
     onUnauthorized?: (status?: number) => void;
@@ -21,6 +21,7 @@ export async function fetcher<T>({ url, payload, method = 'get', headers = defau
             return result;
         }
     }
+
     try {
         const response = await fetch(url, {
             method,

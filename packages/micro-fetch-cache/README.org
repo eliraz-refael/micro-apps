@@ -1,0 +1,61 @@
+#+TITLE: Micro Fetch Cache
+
+* Micro Fetch Cache
+An idiomatic wrapper to fetch with some caching capabilities.
+This package is WIP, I will update it from time to time, hopfully it would help others.
+I was trying to write it in a functional programming fashion.
+PRs are welcome.
+** How to install
+#+begin_src shell
+npm i micro-fetch-cache
+#+end_src
+or
+#+begin_src shell
+yarn add micro-fetch cache
+#+end_src
+** How to use
+*** How to perform a get request
+#+begin_src typescript
+import { microFetchCache } from 'micro-fetch-cache';
+
+const { getRequest, postRequest, cacher, fetcher } = microFetchCache({ stroage: localStorage });
+
+async function getMyData() {
+    try {
+        const myData = getRequest({ url: 'https://myApiWebsite/api/get/it/already', fetcher, cacher({ expiration: 300 }) });
+        return myData
+    } catch (e) {
+        // do something with the error
+    }
+}
+
+async function postMyData(myData) {
+    try {
+        // you could use cacher here, though it does not make any sense
+        const response = postRequest({ url: 'https://my-url/api/post/it', fetcher, payload: myData });
+    } catch (e) {
+        // do something with the error
+    }
+}
+
+#+end_src
+**** So what is that cacher and fetcher?
+- The fetcher is a function that should do one thing, and it's to fetch. you can actually impletent it yourself and use your own fetching mechanism, this makes it very easy to "hack" it.
+- The cahcer is the caching function that should cache your results. My implementation is using =localStorage= or =sessionStorage=, and then again you could implement your own cahcer function and use whatever caching API you want.
+**** How to implement my own fetcher
+The fetcher should return a function upon invokation it will perform the ajax call, you could see how it is implemented, it's pretty straight forward.
+it's build this way so it will be super easy to test.
+On your tests you could create a fetcher function that simulates the fetching behavior.
+here is the expected signature of the fetcher function:
+#+begin_src typescript
+interface IFetcher {
+    url: string;
+    method?: 'get' | 'post' | 'put' | 'patch' | 'delete';
+    headers?: any;
+    payload?: any;
+    onUnauthorized?: (status?: number) => void;
+}
+
+async function fetcher<T>({ url, payload, method = 'get', headers = defaultHeaders, onUnauthorized }: IFetcher): Promise<string | T>
+
+#+end_src

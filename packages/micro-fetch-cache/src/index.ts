@@ -1,9 +1,10 @@
 import { microStorage } from './cacher';
 import { IFetcher, fetcher as fetcherFunc } from './fetcher';
+export { useMicroFetch } from './useMicroFetch';
 
-type StorageSetter = ({ key, item }: { key: string, item: any }) => boolean;
-type StorageGetter<T> = (key:string) => T | boolean;
-type FetcherFunc<T> = ({ url, method, headers, onUnauthorized} : IFetcher) => Promise<string | T>;
+export type StorageSetter = ({ key, item }: { key: string, item: any }) => boolean;
+export type StorageGetter<T> = (key:string) => T | boolean;
+export type FetcherFunc<T> = ({ url, method, headers, onUnauthorized} : IFetcher) => Promise<string | T>;
 
 interface TaggerArgs {
     key: string;
@@ -11,10 +12,11 @@ interface TaggerArgs {
 }
 type Tagger = ({ key, listKey }: TaggerArgs) => void;
 
-interface CacherFunc {
+interface CacherFunc<T> {
     expiration: number;
     tag?: string;
     setItemFunc: ({ key, item }: { key: string, item: any }) => boolean;
+    getItemFunc: (key: string) => { expireAt: number, item: T } | false;
     tagger?: Tagger;
 }
 
@@ -26,16 +28,17 @@ interface CacherCB {
 interface FetchGet<T> {
     url: string;
     fetcher?: FetcherFunc<T>,
-    cacher?: ({ key, item }: CacherCB) => void;
+    cacher?: ({ key, item }: CacherCB) => T | null;
     tag?: string;
     expiration?: number;
 }
 
-interface FetchPost<T, R> {
+interface FetchRequest<T, R> {
     url: string;
-    payload: T;
+    payload?: T;
     fetcher?: FetcherFunc<R>,
-    cacher?: ({ key, item }: CacherCB) => void;
+    cacher?: ({ key, item }: CacherCB) => T | null;
+    method: 'post' | 'put' | 'patch' | 'delete' | 'get';
     tag?: string;
     expiration?: number;
 }
@@ -44,23 +47,18 @@ export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = loca
 
     const { cacheItem, getItem } = microStorage(storage);
 
-    async function parseResponse<T>(response: Response): Promise<T | string> {
-        try {
-            const result = await response.json();
-            return result;
-        } catch {
-            const result = await response.text();
-            return result;
-        }
-    }
-
-    function cacher({ expiration, setItemFunc = cacheItem, tagger } : CacherFunc) {
+    function cacher<T>({ expiration, setItemFunc = cacheItem, getItemFunc = getItem, tagger } : CacherFunc<T>) {
         return ({ key, item }: CacherCB) => {
+            const cachedItem = getItemFunc(key);
+            if (cachedItem && cachedItem.expireAt > Date.now()) {
+                return cachedItem.item;
+            }
             const data = { expireAt: expiration, item };
             setItemFunc({ key, item: data });
             if (tagger) {
                 tagger({ key, listKey });
             }
+            return null;
         }
     }
 
@@ -83,25 +81,44 @@ export function microFetchCache({ listKey = '##-mfc-all-keys-##', storage = loca
         }
     }
 
-    async function get<T>({ url, cacher, fetcher = fetcherFunc }: FetchGet<T>): Promise<string | T> {
-        const result = await fetcher({ url });
-        if (cacher) {
-            cacher({ key: url, item: result as any });
-        }
-        return result;
+    function getRequest<T>({url, cacher, fetcher = fetcherFunc }: FetchGet<T>): (() => Promise<string | T>) {
+        return async () => requestP({ url, cacher, fetcher, method: 'get' });
     }
 
-    async function post<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchPost<T, R>) {
-        const result = await fetcher({ url, payload });
+    function postRequest<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchRequest<T, R>): (() => Promise<string | R | T>) {
+        return async () => requestP({ url, payload, cacher, fetcher, method: 'post' });
+    }
+
+    function putRequest<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchRequest<T, R>): (() => Promise<string | R | T>) {
+        return async () => requestP({ url, payload, cacher, fetcher, method: 'put' });
+    }
+
+    function patchRequest<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchRequest<T, R>): (() => Promise<string | R | T>) {
+        return async () => requestP({ url, payload, cacher, fetcher, method: 'patch' });
+    }
+
+    function deleteRequest<T, R>({ url, payload, cacher, fetcher = fetcherFunc }: FetchRequest<T, R>): (() => Promise<string | R | T>) {
+        return async () => requestP({ url, payload, cacher, fetcher, method: 'delete' });
+    }
+
+    async function requestP<T, R>({ url, payload, cacher, fetcher = fetcherFunc, method }: FetchRequest<T, R>) {
+        const result = await fetcher({ url, payload, method });
         if (cacher) {
-            cacher({ key: url, item: result as any });
+            const cachedItem = cacher({ key: url, item: result as R });
+            if (cachedItem) {
+                return cachedItem;
+            }
         }
         return result;
     }
 
     return {
-        get,
-        post,
+        getRequest,
+        deleteRequest,
+        postRequest,
+        putRequest,
+        patchRequest,
+        tagAs,
         cacher,
         fetcher: fetcherFunc
     }
