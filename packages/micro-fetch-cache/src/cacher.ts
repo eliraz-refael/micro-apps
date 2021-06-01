@@ -1,28 +1,34 @@
-export function microStorage(storage: Storage) {
+type CachedItem<T> = { item: T, expireAt: number };
 
-    function cacheItem({ key, item } : {key: string, item: any}): boolean {
-        try {
-            storage.setItem(key, JSON.stringify(item));
-            return true;
-        } catch {
-            return false;
+export function microStorage() {
+
+    function buildCacheItemFn(storageSetter: (key: string, item: any) => void = localStorage.setItem) {
+        return ({ key, item, stringify = true }: { key: string, item: any, stringify?: boolean }) => {
+            try {
+                storageSetter(key, stringify ? JSON.stringify(item) : item);
+                return true;
+            } catch {
+                return false;
+            }
         }
     }
 
-    function getItem<T>(key: string): T | false {
-        try {
-            const unparsedItem = storage.getItem(key);
-            if (unparsedItem) {
-                return JSON.parse(unparsedItem) as T;
+    function buildGetItemFn(storageGetter: (key: string) => string | null | unknown = localStorage.getItem) {
+        return <T>(key: string, parseJson?: boolean) => {
+            try {
+                const unparsedItem = storageGetter(key);
+                if (parseJson && unparsedItem) {
+                    return JSON.parse(key) as T;
+                }
+                return unparsedItem as T;
+            } catch (e) {
+                return null;
             }
-            return false;
-        } catch {
-            return false;
         }
     }
 
     return {
-        cacheItem,
-        getItem
+        buildCacheItemFn,
+        buildGetItemFn
     }
 }

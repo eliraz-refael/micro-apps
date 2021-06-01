@@ -33,7 +33,7 @@ export async function fetcher<T>({ url, payload, method = 'get', headers = defau
         }
         if ((response.status === 401 || response.status === 403) && onUnauthorized) {
             onUnauthorized(response.status);
-            return await parseResponse<T>(response);
+            return await Promise.reject(parseResponse<T>(response));
         }
         return Promise.reject(await parseResponse<T>(response))
     } catch (e) {
