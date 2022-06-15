@@ -1,7 +1,9 @@
 export interface IFetcher {
     url: string;
     method?: 'get' | 'post' | 'put' | 'patch' | 'delete';
-    headers?: any;
+    headers?: {
+        [key: string]: string
+    };
     payload?: any;
     onUnauthorized?: (status?: number) => void;
 }

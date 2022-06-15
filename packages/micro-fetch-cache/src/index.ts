@@ -46,30 +46,41 @@ interface IRequestContainerArgs<T> {
 
 type RequestContainerFn<T> = ({ fetcher, cacher }: IRequestContainerArgs<T>) => Promise<string | boolean | T>;
 
+interface MFConfig {
+    storageSetterFn: (key: string, value: string) => void
+    storageGetterFn: (key: string) => string | null
+    cacheKey: string
+}
+
+export const defaultConfig = {
+    storageSetterFn: localStorage.setItem,
+    storageGetterFn: localStorage.getItem,
+    cacheKey: '##-mfc-all-keys-##',
+}
 
 // this is a comment
-export function microFetchCache({ listKey = '##-mfc-all-keys-##' }: { listKey?: string }) {
+export function microFetchCache(config: MFConfig = defaultConfig) {
 
     const { buildCacheItemFn, buildGetItemFn } = microStorage();
+    const { storageGetterFn, storageSetterFn, cacheKey } = config;
 
-    const cacheItem = buildCacheItemFn(localStorage.setItem);
-    const getItemFromCache = buildGetItemFn(localStorage.getItem);
+    const cacheItem = buildCacheItemFn(storageSetterFn);
+    const getItemFromCache = buildGetItemFn(storageGetterFn);
 
     function itemTransformer<T>(item: T, expireAt: number) {
-        return [
-            { item, expireAt },
-            {
-                getItem: (cachedItem: CachedItem<T>) => cachedItem.item,
-                getExpiration: (cachedItem: CachedItem<T>) => cachedItem.expireAt
-            }
-        ]
+        return ({
+            item,
+            expireAt,
+            getItem: (cachedItem: CachedItem<T>) => cachedItem.item,
+            getExpiration: (cachedItem: CachedItem<T>) => cachedItem.expireAt
+        })
     }
 
     function cacher<T>({ expiration, setItemFunc = cacheItem, getItemFunc = getItemFromCache, tagger }: ICacherGeneratorArgs<T>): CacherFn<T>  {
         return ({ key, item }) => {
-            const [transformedItem, ti]  = itemTransformer(item, expiration);
+            const { getExpiration }  = itemTransformer(item, expiration);
             const cachedItem = getItemFunc(key);
-            const expireAt = ti.getExpiration(item);
+            const expireAt = getExpiration(item);
             if (cachedItem && cachedItem.expireAt > Date.now()) {
                 return cachedItem.item;
             }
